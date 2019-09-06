@@ -27,29 +27,31 @@ As we will be doing a multistage build in this dockerfile, lets start with the s
 image.
 
 Add the following to your Dockerfile:
+```Dockerfile
+FROM nginx:1.17-alpine as nginx
+ARG uid=82
+COPY ./public/img /var/app/public/img
+COPY ./public/favicon.ico /var/app/public/favicon.ico
+COPY ./nginx/nginx.conf /etc/nginx/nginx.conf
+COPY ./nginx/site.template /etc/nginx/conf.d/site.template
+RUN set -eux; \
+  adduser -u ${uid} -D -S -G www-data www-data; \
+  touch /var/run/nginx.pid; \
+  chown -R www-data:www-data /var/run/nginx.pid; \
+  chown -R www-data:www-data /var/cache/nginx; \
+  chown -R www-data:www-data /etc/nginx; \
+  chown -R www-data:www-data /var/log/nginx; \
+  chown -R www-data:www-data /var/app;
+USER www-data
+WORKDIR /var/app/public
+ENV PHP_HOST=host.docker.internal:9000
+ENV NGINX_TIMEOUT=60s
+ENV NGINX_FASTCGI_READ_TIMEOUT=60
+ENTRYPOINT ["/bin/sh", "-c"]
+CMD ["envsubst '${PHP_HOST},${NGINX_TIMEOUT},${NGINX_FASTCGI_READ_TIMEOUT}' < /etc/nginx/conf.d/site.template > /etc/nginx/conf.d/default.conf; exec nginx -g 'daemon off;'"]
+EXPOSE 8080
+```
 
-`FROM nginx:1.17-alpine as nginx`\
-`ARG uid=82`\
-`COPY ./public/img /var/app/public/img`\
-`COPY ./public/favicon.ico /var/app/public/favicon.ico`\
-`COPY ./nginx/nginx.conf /etc/nginx/nginx.conf`\
-`COPY ./nginx/site.template /etc/nginx/conf.d/site.template`\
-`RUN set -eux; \`\
-`  adduser -u ${uid} -D -S -G www-data www-data; \`\
-`  touch /var/run/nginx.pid; \`\
-`  chown -R www-data:www-data /var/run/nginx.pid; \`\
-`  chown -R www-data:www-data /var/cache/nginx; \`\
-`  chown -R www-data:www-data /etc/nginx; \`\
-`  chown -R www-data:www-data /var/log/nginx; \`\
-`  chown -R www-data:www-data /var/app;`\
-`USER www-data`\
-`WORKDIR /var/app/public`\
-`ENV PHP_HOST=host.docker.internal:9000`\
-`ENV NGINX_TIMEOUT=60s`\
-`ENV NGINX_FASTCGI_READ_TIMEOUT=60`\
-`ENTRYPOINT ["/bin/sh", "-c"]`\
-`CMD ["envsubst '${PHP_HOST},${NGINX_TIMEOUT},${NGINX_FASTCGI_READ_TIMEOUT}' < /etc/nginx/conf.d/site.template > /etc/nginx/conf.d/default.conf; exec nginx -g 'daemon off;'"]`\
-`EXPOSE 8080`
 
 This is everything you'll need for your Nginx image. What this does is pulls the Nginx alpine image from Dockerhub
 and names this stage "nginx". It will set the user ID to www-data and copies over all the static files for the sample
@@ -69,11 +71,13 @@ the composer.lock file, install the dependencies in the image which we can then 
 
 Add the following to your Dockerfile:
 
-`FROM composer:1.8 as installer`\
-`WORKDIR /var/app`\
-`COPY ./composer.json composer.json`\
-`COPY ./composer.lock composer.lock`\
-`RUN composer install`\
+```Dockerfile
+FROM composer:1.8 as installer
+WORKDIR /var/app
+COPY ./composer.json composer.json
+COPY ./composer.lock composer.lock
+RUN composer install
+```
 
 We are using the composer image from Dockerhub version locked to 1.8 and we're naming the stage "installer". We then set
 the working directory to /var/app and then we copy in our compose.json file and composer.lock file. Then we run the
@@ -85,21 +89,23 @@ image will also copy in the files from our installer stage to get the dependenci
 
 Add the following to your Dockerfile:
 
-`FROM php:7.3-fpm-alpine as php`\
-`ARG uid=82`\
-`ARG gid=82`\
-`RUN set -eux; \`\
-`  mkdir -p /var/app; \`\
-`  chown -R www-data:www-data /var/app`\
-`COPY ./php/php-fpm.conf /usr/local/etc/php-fpm.conf`\
-`COPY ./php/www.conf /usr/local/etc/php-fpm.d/www.conf`\
-`COPY ./php/php.ini $PHP_INI_DIR/php.ini`\
-`WORKDIR /var/app/`\
-`COPY --chown=www-data:www-data public/index.php public/index.php`\
-`COPY --chown=www-data:www-data app app/`\
-`COPY --from=installer --chown=www-data:www-data /var/app/vendor vendor/`\
-`USER www-data`\
-`EXPOSE 9000`
+```Dockerfile
+FROM php:7.3-fpm-alpine as php
+ARG uid=82
+ARG gid=82
+RUN set -eux; \
+  mkdir -p /var/app; \
+  chown -R www-data:www-data /var/app
+COPY ./php/php-fpm.conf /usr/local/etc/php-fpm.conf
+COPY ./php/www.conf /usr/local/etc/php-fpm.d/www.conf
+COPY ./php/php.ini $PHP_INI_DIR/php.ini
+WORKDIR /var/app/
+COPY --chown=www-data:www-data public/index.php public/index.php
+COPY --chown=www-data:www-data app app/
+COPY --from=installer --chown=www-data:www-data /var/app/vendor vendor/
+USER www-data
+EXPOSE 9000
+```
 
 We're pulling the PHP image from Dockerhub and we're naming this stage "php". We set the user ID and the group ID to
 that of the user www-data. We then create our /var/app directory and change the owner of this directory to www-data. We
